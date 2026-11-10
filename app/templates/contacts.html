@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Контакты{% endblock %}
+{% block content %}
+<section class="page-section">
+    <div class="split contact-heading">
+        <div>
+            <h1>Контакты</h1>
+            {% if selected_dorm %}
+            <span class="badge badge-blue">Общежитие №{{ selected_dorm }}</span>
+            <a href="{{ url_for('dormitories') }}">Изменить</a>
+            {% else %}
+            <p>Выбери общежитие, чтобы увидеть его контакты.</p>
+            <a class="button" href="{{ url_for('dormitories') }}">Выбрать общежитие</a>
+            {% endif %}
+        </div>
+        <img class="illustration" src="{{ url_for('static', filename='img/contact-cat.webp') }}" alt="">
+    </div>
+    <div class="contact-list">
+        {% if selected_dorm %}
+        {% for heading, description, phone in [('Комендант', 'Вопросы заселения и проживания', dorm_contacts.get('commandant')), ('Дежурный', 'Срочные бытовые вопросы', dorm_contacts.get('duty'))] %}
+        <article class="contact-card">
+            <div><h2>{{ heading }}</h2><p>Общежитие №{{ selected_dorm }} · {{ description }}</p></div>
+            {% if phone %}<a href="tel:{{ phone }}">{{ phone }}</a>{% else %}<span class="badge">Телефон уточняется</span>{% endif %}
+        </article>
+        {% endfor %}
+        {% endif %}
+        <article class="contact-card" id="developers">
+            <div><h2>Техподдержка</h2><p>Команда разработчиков · вопросы по работе сайта и формы обращения</p></div>
+            {% if developer_email %}<a class="button button-soft" href="mailto:{{ developer_email }}">Написать разработчикам</a>{% else %}<span class="badge">Контакт уточняется</span>{% endif %}
+        </article>
+    </div>
+</section>
+{% endblock %}

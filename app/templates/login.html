@@ -1,0 +1,10 @@
+{% extends 'auth.html' %}
+{% block title %}Вход{% endblock %}
+{% block auth_form %}
+<form method="post" class="form-stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Электронная почта<input type="email" name="email" autocomplete="username" maxlength="255" value="{{ request.form.get('email', '') }}" required></label>
+    <label>Пароль<input type="password" name="password" autocomplete="current-password" required></label>
+    <div class="actions"><button class="button">Войти</button><a href="{{ url_for('register') }}">Регистрация</a></div>
+</form>
+{% endblock %}

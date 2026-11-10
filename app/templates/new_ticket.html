@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}Оставить обращение{% endblock %}
+{% block content %}
+<section class="split page-section form-page">
+    <div>
+        <h1>Оставить обращение</h1>
+        <p>Расскажи, в чём проблема. Мы передадим заявку нужному специалисту.</p>
+        <img class="illustration" src="{{ url_for('static', filename='img/form-cat.webp') }}" alt="Кот с планшетом">
+    </div>
+    <form method="post" class="form-stack panel">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field-row">
+            <label>Общежитие
+                <select name="dorm" required>
+                    <option value="">Выбери общежитие</option>
+                    {% for number in dorm_numbers %}
+                    <option value="{{ number }}"{% if request.form.get('dorm', selected_dorm) == number %} selected{% endif %}>Общежитие №{{ number }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Комната<input name="room" maxlength="20" placeholder="Например, 512" value="{{ request.form.get('room', '') }}" required></label>
+        </div>
+        <label>Телефон или Telegram
+            <input name="contact" maxlength="60" placeholder="+7 … или @username" value="{{ request.form.get('contact', '') }}" required>
+            <small>Достаточно одного способа связи.</small>
+        </label>
+        <label>Тема<input name="title" maxlength="200" placeholder="Например, не работает Wi-Fi" value="{{ request.form.get('title', '') }}" required></label>
+        <label>Что случилось?<textarea name="description" maxlength="10000" rows="5" placeholder="Опиши проблему подробнее" required>{{ request.form.get('description', '') }}</textarea></label>
+        <label>Приоритет
+            <select name="priority_id" required>
+                {% for priority in priorities %}
+                <option value="{{ priority.priority_id }}"{% if request.form.get('priority_id') == priority.priority_id|string or (not request.form and priority.name == 'MEDIUM') %} selected{% endif %}>{{ priority_labels.get(priority.name, priority.name) }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button class="button">Отправить <span aria-hidden="true">→</span></button>
+    </form>
+</section>
+{% endblock %}

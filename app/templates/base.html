@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Главная{% endblock %} · Общежития ННГУ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='site.css') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+{% block header %}
+<header class="site-header wrap">
+    <a class="logo" href="{{ url_for('index') }}" aria-label="На главную">
+        <img src="{{ url_for('static', filename='img/logo.webp') }}" alt="Университет Лобачевского">
+    </a>
+    <a class="dorm-nav" href="{{ url_for('dormitories') }}">Общежития ННГУ</a>
+    <nav aria-label="Основная навигация">
+        {% for endpoint, label in [('index', 'Главная'), ('new_ticket', 'Оставить обращение'), ('tickets', 'Мои обращения'), ('contacts', 'Контакты')] %}
+        <a href="{{ url_for(endpoint) }}"{% if request.endpoint == endpoint or (endpoint == 'tickets' and request.endpoint == 'ticket_detail') %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+        {% if g.user and g.user.role in ('SUPPORT', 'ADMIN') %}<a href="{{ url_for('stats') }}">Статистика</a>{% endif %}
+    </nav>
+    {% if g.user %}
+    <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="button button-soft">Выйти</button>
+    </form>
+    {% else %}
+    <a class="button button-soft" href="{{ url_for('login') }}">Войти</a>
+    {% endif %}
+</header>
+{% endblock %}
+<main class="{% block main_class %}wrap{% endblock %}">
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+        <p class="notice {{ category }}" role="status">{{ message }}</p>
+    {% endfor %}
+    {% block content %}{% endblock %}
+</main>
+{% block footer %}
+<footer class="site-footer">
+    <div class="wrap footer-inner">
+        <a class="logo" href="{{ url_for('index') }}"><img src="{{ url_for('static', filename='img/logo.webp') }}" alt="Университет Лобачевского"></a>
+        <strong>Общежития ННГУ</strong>
+        <a href="{{ url_for('contacts') }}#developers">Связаться с разработчиками</a>
+    </div>
+</footer>
+{% endblock %}
+</body>
+</html>

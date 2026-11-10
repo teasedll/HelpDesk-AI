@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Статистика{% endblock %}
+{% block content %}
+<section class="page-section">
+    <h1>Статистика обращений</h1>
+    <div class="panel">
+        <table>
+            <thead><tr><th scope="col">Статус</th><th scope="col">Обращений</th></tr></thead>
+            <tbody>{% for row in rows %}<tr><td>{{ status_labels.get(row.name, row.name) }}</td><td>{{ row.count }}</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

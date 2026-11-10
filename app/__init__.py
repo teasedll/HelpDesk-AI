@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 from functools import wraps
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
@@ -11,9 +12,17 @@ from .ml import predict_category
 
 load_dotenv()
 
+DORM_NUMBERS = ('1', '2', '4', '5', '6', '7', '8', '9')
+STATUS_FILTERS = {
+    'active': ('NEW', 'IN_PROGRESS', 'WAITING'),
+    'resolved': ('RESOLVED', 'CLOSED'),
+}
+
 def create_app(test_config=None):
     app = Flask(__name__)
     app.config.update(SECRET_KEY=os.getenv('SECRET_KEY') or secrets.token_hex(32), DATABASE_URL=os.getenv('DATABASE_URL', 'postgresql://localhost:5432/helpdesk_ai'))
+    app.config.update(DORM_CONTACTS={}, DEVELOPER_EMAIL=os.getenv('DEVELOPER_EMAIL', ''))
+    app.config.from_prefixed_env(prefix='HELPDESK')
     if test_config:
         app.config.update(test_config)
 
@@ -55,11 +64,45 @@ def create_app(test_config=None):
 
     @app.context_processor
     def context():
-        return {'csrf_token': lambda: session.get('csrf', '')}
+        return {
+            'csrf_token': lambda: session.get('csrf', ''),
+            'dorm_numbers': DORM_NUMBERS,
+            'selected_dorm': session.get('dorm'),
+            'status_labels': {
+                'NEW': 'Новое', 'IN_PROGRESS': 'В работе', 'WAITING': 'Ожидание',
+                'RESOLVED': 'Решено', 'CLOSED': 'Закрыто',
+            },
+            'priority_labels': {
+                'LOW': 'Низкий', 'MEDIUM': 'Средний', 'HIGH': 'Высокий', 'CRITICAL': 'Критический',
+            },
+        }
+
+    def clear_account_session():
+        dorm = session.get('dorm')
+        session.clear()
+        if dorm in DORM_NUMBERS:
+            session['dorm'] = dorm
 
     @app.get('/')
     def index():
-        return redirect(url_for('tickets') if g.user else url_for('login'))
+        return render_template('index.html')
+
+    @app.route('/dormitories', methods=['GET', 'POST'])
+    def dormitories():
+        if request.method == 'POST':
+            dorm = request.form.get('dorm')
+            if dorm not in DORM_NUMBERS:
+                flash('Выбери общежитие из списка.', 'error')
+            else:
+                session['dorm'] = dorm
+                return redirect(url_for('contacts'))
+        return render_template('dormitories.html')
+
+    @app.get('/contacts')
+    def contacts():
+        dorm_contacts = app.config['DORM_CONTACTS'].get(session.get('dorm'), {})
+        return render_template('contacts.html', dorm_contacts=dorm_contacts,
+                               developer_email=app.config['DEVELOPER_EMAIL'])
 
     @app.route('/register', methods=['GET', 'POST'])
     def register():
@@ -75,7 +118,7 @@ def create_app(test_config=None):
                         with conn.cursor() as cur:
                             cur.execute("INSERT INTO users(name,email,password_hash,role_id) VALUES (%s,%s,%s,(SELECT role_id FROM roles WHERE name='USER')) RETURNING user_id", (name,email,generate_password_hash(password)))
                             user_id=cur.fetchone()['user_id']
-                    session.clear()
+                    clear_account_session()
                     session['user_id']=user_id
                     flash('Регистрация завершена.', 'success')
                     return redirect(url_for('tickets'))
@@ -88,7 +131,7 @@ def create_app(test_config=None):
         if request.method == 'POST':
             user=query('SELECT user_id,password_hash FROM users WHERE email=%s', (request.form.get('email','').strip().lower(),), True)
             if user and check_password_hash(user['password_hash'], request.form.get('password','')):
-                session.clear()
+                clear_account_session()
                 session['user_id']=user['user_id']
                 return redirect(url_for('tickets'))
             flash('Неверный email или пароль.', 'error')
@@ -97,19 +140,28 @@ def create_app(test_config=None):
     @app.post('/logout')
     @login_required
     def logout():
-        session.clear()
+        clear_account_session()
         return redirect(url_for('login'))
 
     @app.get('/tickets')
     @login_required
     def tickets():
         sql="""SELECT t.ticket_id,t.title,t.created_at,c.name AS category,s.name AS status,p.name AS priority,u.name AS author FROM tickets t LEFT JOIN categories c ON c.category_id=t.category_id JOIN statuses s ON s.status_id=t.status_id JOIN priorities p ON p.priority_id=t.priority_id JOIN users u ON u.user_id=t.user_id"""
-        params=()
+        filters = []
+        params = []
         if g.user['role']=='USER':
-            sql+=' WHERE t.user_id=%s'
-            params=(g.user['user_id'],)
+            filters.append('t.user_id=%s')
+            params.append(g.user['user_id'])
+        status_filter = request.args.get('status', '')
+        if status_filter not in STATUS_FILTERS:
+            status_filter = ''
+        if status_filter in STATUS_FILTERS:
+            filters.append('s.name=ANY(%s)')
+            params.append(list(STATUS_FILTERS[status_filter]))
+        if filters:
+            sql += ' WHERE ' + ' AND '.join(filters)
         sql+=' ORDER BY t.created_at DESC, t.ticket_id DESC LIMIT 200'
-        return render_template('tickets.html', tickets=query(sql,params))
+        return render_template('tickets.html', tickets=query(sql,params), status_filter=status_filter)
 
     @app.route('/tickets/new', methods=['GET','POST'])
     @login_required
@@ -118,20 +170,30 @@ def create_app(test_config=None):
         if request.method=='POST':
             title=request.form.get('title','').strip()
             description=request.form.get('description','').strip()
+            dorm = request.form.get('dorm', '')
+            room = request.form.get('room', '').strip()
+            contact = request.form.get('contact', '').strip()
+            phone_digits = re.sub(r'[^0-9]', '', contact)
+            valid_phone = re.fullmatch(r'\+?[0-9() -]+', contact) and 10 <= len(phone_digits) <= 15
+            valid_contact = valid_phone or re.fullmatch(r'@[A-Za-z0-9_]{5,32}', contact)
             try:
                 priority_id=int(request.form.get('priority_id',''))
             except ValueError:
                 priority_id=-1
             if not title or len(title)>200 or not description or len(description)>10000 or priority_id not in {p['priority_id'] for p in priorities}:
                 flash('Проверьте название, описание и приоритет.', 'error')
+            elif dorm not in DORM_NUMBERS or not re.fullmatch(r'[\w/-]{1,20}', room) or len(contact) > 60 or not valid_contact:
+                flash('Выбери общежитие, укажи комнату и введи телефон или Telegram в формате @username.', 'error')
             else:
                 result=predict_category(title+' '+description)
+                full_description = f'Общежитие №{dorm} · Комната {room}\nСвязь: {contact}\n\n{description}'
                 with db() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("INSERT INTO tickets(user_id,category_id,priority_id,status_id,title,description) VALUES (%s,(SELECT category_id FROM categories WHERE name=%s),%s,(SELECT status_id FROM statuses WHERE name='NEW'),%s,%s) RETURNING ticket_id", (g.user['user_id'],result['category'],priority_id,title,description))
+                        cur.execute("INSERT INTO tickets(user_id,category_id,priority_id,status_id,title,description) VALUES (%s,(SELECT category_id FROM categories WHERE name=%s),%s,(SELECT status_id FROM statuses WHERE name='NEW'),%s,%s) RETURNING ticket_id", (g.user['user_id'],result['category'],priority_id,title,full_description))
                         tid=cur.fetchone()['ticket_id']
                         if result['confidence'] is not None:
                             cur.execute('INSERT INTO ml_predictions(ticket_id,predicted_category_id,confidence,model_version) VALUES (%s,(SELECT category_id FROM categories WHERE name=%s),%s,%s)',(tid,result['category'],result['confidence'],result['version']))
+                session['dorm'] = dorm
                 flash('Заявка создана.', 'success')
                 return redirect(url_for('ticket_detail',ticket_id=tid))
         return render_template('new_ticket.html',priorities=priorities)

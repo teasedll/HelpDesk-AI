@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block body_class %}auth-page{% endblock %}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
+{% block main_class %}auth-main{% endblock %}
+{% block content %}
+<a class="auth-logo" href="{{ url_for('index') }}"><img src="{{ url_for('static', filename='img/logo-white.webp') }}" alt="Университет Лобачевского"></a>
+<div class="auth-card">
+    <div class="auth-heading"><h1>{{ self.title() }}</h1><a href="{{ url_for('index') }}">На главную</a></div>
+    {% block auth_form %}{% endblock %}
+</div>
+{% endblock %}

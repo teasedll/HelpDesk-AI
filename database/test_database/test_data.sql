@@ -1,4 +1,7 @@
--- HelpDesk AI / PostgreSQL / public. Выполняйте в тестовой базе.
+-- HelpDesk AI / PostgreSQL / public. Выполняйте в тестовой базе после schema.sql.
+-- Если seed.sql уже выполнен, используем существующие строки справочников.
+-- После загрузки старого варианта с ролями user и agent используйте
+-- отдельную тестовую базу, чтобы избежать конфликта адресов.
 -- DBeaver: привяжите вкладку к тестовому подключению, затем выберите
 -- «Редактор SQL → Выполнить SQL скрипт». После загрузки откройте queries.sql.
 -- Один блок DO выполняется атомарно. Повторный запуск использует те же
@@ -29,60 +32,59 @@ DECLARE
     ticket_updated timestamp;
     ticket_closed timestamp;
     location_names text[] := ARRAY['корпус А','корпус Б','библиотека','общежитие','учебный центр'];
-    status_names text[] := ARRAY['new','queued','in_progress','resolved','closed'];
-    priority_names text[] := ARRAY['low','medium','high','critical'];
-    category_names text[] := ARRAY['Сеть','Учётные записи','Оборудование','ПО','Электронная почта'];
+    status_names text[] := ARRAY['NEW','WAITING','IN_PROGRESS','RESOLVED','CLOSED'];
+    priority_names text[] := ARRAY['LOW','MEDIUM','HIGH','CRITICAL'];
+    category_names text[] := ARRAY['Network','Account','Hardware','Software','Other'];
 BEGIN
     -- Два одновременных запуска этого набора выполняются последовательно.
     PERFORM pg_advisory_xact_lock(140313327, 20261110);
 
     INSERT INTO public.roles (name, description)
     SELECT seed.name, seed.description
-    FROM (VALUES ('user','Автор обращений'), ('agent','Сотрудник поддержки'),
-                 ('admin','Администратор')) AS seed(name, description)
+    FROM (VALUES ('USER','Обычный пользователь'), ('SUPPORT','Сотрудник поддержки'),
+                 ('ADMIN','Администратор')) AS seed(name, description)
     WHERE NOT EXISTS (SELECT 1 FROM public.roles r WHERE r.name = seed.name)
     ON CONFLICT (name) DO NOTHING;
 
     INSERT INTO public.statuses (name, description)
     SELECT seed.name, seed.description
-    FROM unnest(status_names, ARRAY['Новое','В очереди','В работе','Решено','Закрыто'])
+    FROM unnest(status_names, ARRAY['Новая','Ожидание','В работе','Решена','Закрыта'])
          AS seed(name, description)
     WHERE NOT EXISTS (SELECT 1 FROM public.statuses s WHERE s.name = seed.name)
     ON CONFLICT (name) DO NOTHING;
 
     INSERT INTO public.priorities (name, level, description)
     SELECT seed.name, seed.level::integer, seed.description
-    FROM unnest(priority_names, ARRAY['Низкий','Обычный','Высокий','Критический'])
+    FROM unnest(priority_names, ARRAY['Низкий','Средний','Высокий','Критический'])
          WITH ORDINALITY AS seed(name, description, level)
     WHERE NOT EXISTS (SELECT 1 FROM public.priorities p WHERE p.name = seed.name)
     ON CONFLICT (name) DO NOTHING;
 
     INSERT INTO public.categories (name, description)
     SELECT seed.name, seed.description
-    FROM unnest(category_names, ARRAY['Подключение и доступ в сеть',
-              'Вход и восстановление доступа','Рабочие места и периферия',
-              'Учебные программы и порталы','Доставка писем и настройки почты'])
+    FROM unnest(category_names, ARRAY['Сеть и интернет','Учётные записи','Оборудование',
+              'Программное обеспечение','Прочее'])
          AS seed(name, description)
     WHERE NOT EXISTS (SELECT 1 FROM public.categories c WHERE c.name = seed.name)
     ON CONFLICT (name) DO NOTHING;
 
     FOR actor IN
         SELECT * FROM (VALUES
-            (1, 'Анна Лебедева', 'user', 'pbkdf2:sha256:1000000$31064604669d0094$63c3912e2453cd03feccc02cc1941ead4abfe05bfca36cd0dda51a738e3d002e'),
-            (2, 'Илья Орлов', 'user', 'pbkdf2:sha256:1000000$7280d594aaa27c70$be09b0031cbcfe94562d70b83d1c08aa07135e8d2bcb58c4455286e87bc80a9c'),
-            (3, 'Мария Белова', 'user', 'pbkdf2:sha256:1000000$afb97c7dface97f5$aee37b4443f38a628a6678f89d3104a85d0cf25670541e28e1b77b600b2685fd'),
-            (4, 'Денис Крылов', 'user', 'pbkdf2:sha256:1000000$cea23768d8e577c8$2c0b77abb7936ab180522519a588af1bd085a0cdaa61869e4bff394b63a19f6d'),
-            (5, 'Софья Власова', 'user', 'pbkdf2:sha256:1000000$267d131df5242869$d462650822d2d03d23fb6b2b4fce2b30828f8522a47f01e2d1ca8c7b846b4ee3'),
-            (6, 'Павел Ершов', 'user', 'pbkdf2:sha256:1000000$f2a715e9c5a57e4f$b643649fc498eebc552a36e1e68d9c88e76e1cb20b77131ecf42a9da08982254'),
-            (7, 'Алина Волкова', 'user', 'pbkdf2:sha256:1000000$6cfbd9b9e6fbadf6$e563bca1710238684ebe781f10570ce8dd4c0581f5fe0d13dcbafa0a8bf4f449'),
-            (8, 'Кирилл Лапин', 'user', 'pbkdf2:sha256:1000000$e47dc4a4dd2f540a$ee40f6ceb01ae6c5bfa0d429737d5f8fed18029f644ecee4ead5c2a1982c533a'),
-            (9, 'Елена Морозова', 'user', 'pbkdf2:sha256:1000000$1fbbbb3f22d9b5d0$f05dc6def771128ed2b6a254f49d3bae0bfb7b57d2c87cfb57af2bf6bc186263'),
-            (10, 'Никита Соколов', 'user', 'pbkdf2:sha256:1000000$5fd77c37dd7c1f57$dc6561854cb06896481d477f53b9fdc211992ad6b4d59ab76cc54c7d0270ee0d'),
-            (11, 'Вера Котова', 'user', 'pbkdf2:sha256:1000000$70a8f9d832361997$89a9a3094889bc02e959c4d8d1b080c8f87255316f2b37e12a0951f206a3c0ce'),
-            (12, 'Олег Миронов', 'agent', 'pbkdf2:sha256:1000000$7fa9c6f056238774$f7950c671c53f4149d11cdb407957bb5d40f77d60476d9bd2464643e109c7aa6'),
-            (13, 'Дарья Макарова', 'agent', 'pbkdf2:sha256:1000000$e28b4f4fc9c226e8$f661ae47a2733dfde09bb6f5081406486804851981f5d59ac598060eaa43a088'),
-            (14, 'Артём Громов', 'agent', 'pbkdf2:sha256:1000000$febc2e5249714424$8732b1dc54ff037ca5641e5fed300200ded2177e3973cd97ab1acdcf60bfd298'),
-            (15, 'Юлия Савина', 'agent', 'pbkdf2:sha256:1000000$646392ef53052129$4f03a1d72a6b15735c2eba9cfed77e1534b25389e812648ca1a38ddb1c7f4717')
+            (1, 'Анна Лебедева', 'USER', 'pbkdf2:sha256:1000000$31064604669d0094$63c3912e2453cd03feccc02cc1941ead4abfe05bfca36cd0dda51a738e3d002e'),
+            (2, 'Илья Орлов', 'USER', 'pbkdf2:sha256:1000000$7280d594aaa27c70$be09b0031cbcfe94562d70b83d1c08aa07135e8d2bcb58c4455286e87bc80a9c'),
+            (3, 'Мария Белова', 'USER', 'pbkdf2:sha256:1000000$afb97c7dface97f5$aee37b4443f38a628a6678f89d3104a85d0cf25670541e28e1b77b600b2685fd'),
+            (4, 'Денис Крылов', 'USER', 'pbkdf2:sha256:1000000$cea23768d8e577c8$2c0b77abb7936ab180522519a588af1bd085a0cdaa61869e4bff394b63a19f6d'),
+            (5, 'Софья Власова', 'USER', 'pbkdf2:sha256:1000000$267d131df5242869$d462650822d2d03d23fb6b2b4fce2b30828f8522a47f01e2d1ca8c7b846b4ee3'),
+            (6, 'Павел Ершов', 'USER', 'pbkdf2:sha256:1000000$f2a715e9c5a57e4f$b643649fc498eebc552a36e1e68d9c88e76e1cb20b77131ecf42a9da08982254'),
+            (7, 'Алина Волкова', 'USER', 'pbkdf2:sha256:1000000$6cfbd9b9e6fbadf6$e563bca1710238684ebe781f10570ce8dd4c0581f5fe0d13dcbafa0a8bf4f449'),
+            (8, 'Кирилл Лапин', 'USER', 'pbkdf2:sha256:1000000$e47dc4a4dd2f540a$ee40f6ceb01ae6c5bfa0d429737d5f8fed18029f644ecee4ead5c2a1982c533a'),
+            (9, 'Елена Морозова', 'USER', 'pbkdf2:sha256:1000000$1fbbbb3f22d9b5d0$f05dc6def771128ed2b6a254f49d3bae0bfb7b57d2c87cfb57af2bf6bc186263'),
+            (10, 'Никита Соколов', 'USER', 'pbkdf2:sha256:1000000$5fd77c37dd7c1f57$dc6561854cb06896481d477f53b9fdc211992ad6b4d59ab76cc54c7d0270ee0d'),
+            (11, 'Вера Котова', 'USER', 'pbkdf2:sha256:1000000$70a8f9d832361997$89a9a3094889bc02e959c4d8d1b080c8f87255316f2b37e12a0951f206a3c0ce'),
+            (12, 'Олег Миронов', 'SUPPORT', 'pbkdf2:sha256:1000000$7fa9c6f056238774$f7950c671c53f4149d11cdb407957bb5d40f77d60476d9bd2464643e109c7aa6'),
+            (13, 'Дарья Макарова', 'SUPPORT', 'pbkdf2:sha256:1000000$e28b4f4fc9c226e8$f661ae47a2733dfde09bb6f5081406486804851981f5d59ac598060eaa43a088'),
+            (14, 'Артём Громов', 'SUPPORT', 'pbkdf2:sha256:1000000$febc2e5249714424$8732b1dc54ff037ca5641e5fed300200ded2177e3973cd97ab1acdcf60bfd298'),
+            (15, 'Юлия Савина', 'SUPPORT', 'pbkdf2:sha256:1000000$646392ef53052129$4f03a1d72a6b15735c2eba9cfed77e1534b25389e812648ca1a38ddb1c7f4717')
         ) AS seed(n, name, role_name, password_hash)
         ORDER BY n
     LOOP

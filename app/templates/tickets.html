@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Мои обращения{% endblock %}
+{% block content %}
+<section class="page-section">
+    <div class="split list-heading">
+        <div>
+            <h1>{{ 'Мои обращения' if g.user.role == 'USER' else 'Все обращения' }}</h1>
+            <p>Здесь можно посмотреть текущий статус и ответы по заявке.</p>
+        </div>
+        <img class="illustration" src="{{ url_for('static', filename='img/list-cat.webp') }}" alt="">
+    </div>
+    <nav class="tabs" aria-label="Фильтр по статусу">
+        {% for value, label in [('', 'Все'), ('active', 'В работе'), ('resolved', 'Решённые')] %}
+        <a class="button button-soft" href="{{ url_for('tickets', status=value) }}"{% if value == status_filter %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+    </nav>
+    <ul class="ticket-list">
+        {% for ticket in tickets %}
+        <li>
+            <a class="ticket-row" href="{{ url_for('ticket_detail', ticket_id=ticket.ticket_id) }}">
+                <div>
+                    <strong>{{ ticket.title }}</strong>
+                    <p>№{{ ticket.ticket_id }}{% if ticket.created_at %} · {{ ticket.created_at.strftime('%d.%m.%Y') }}{% endif %}{% if ticket.category %} · {{ ticket.category }}{% endif %}{% if g.user.role != 'USER' %} · {{ ticket.author }}{% endif %}</p>
+                </div>
+                <span class="badge status-{{ ticket.status|lower }}">{{ status_labels.get(ticket.status, ticket.status) }}</span>
+                <span class="ticket-arrow" aria-hidden="true">›</span>
+            </a>
+        </li>
+        {% else %}
+        <li class="panel"><p>Здесь пока нет обращений.</p><a href="{{ url_for('new_ticket') }}">Оставить обращение →</a></li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}

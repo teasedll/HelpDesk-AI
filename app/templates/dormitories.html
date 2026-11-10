@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Общежития ННГУ{% endblock %}
+{% block content %}
+<section class="split page-section">
+    <div>
+        <h1>Общежития ННГУ</h1>
+        <p>Выбери своё общежитие, чтобы увидеть его контакты.</p>
+        <form method="post" class="dorm-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <fieldset>
+                <legend class="sr-only">Номер общежития</legend>
+                <div class="dorm-grid">
+                    {% for number in dorm_numbers %}
+                    <label><input type="radio" name="dorm" value="{{ number }}" required{% if number == selected_dorm %} checked{% endif %}><span>№{{ number }}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+            <button class="button">Сохранить выбор</button>
+        </form>
+    </div>
+    <img class="illustration dorm-cat" src="{{ url_for('static', filename='img/dorm-cat.webp') }}" alt="Рыжий котёнок с брелоком в форме домика">
+</section>
+{% endblock %}
